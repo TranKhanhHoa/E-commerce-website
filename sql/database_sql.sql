@@ -70,25 +70,6 @@ create table carts(
     foreign key(customer_id) references customers(user_id)
 );
 
-create table cart_items (
-	cart_id int not null,
-    variant_id int not null,
-    quantity int not null default 1,
-    price decimal(12,2) not null,
-    added_at timestamp default current_timestamp,
-    
-	CONSTRAINT fk_cart_items_carts
-        FOREIGN KEY (cart_id) REFERENCES carts (cart_id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_cart_items_variants
-        FOREIGN KEY (variant_id) REFERENCES product_variants (variant_id),
-
-    CHECK (quantity > 0),
-    CHECK (price >= 0),
-    
-    primary key(cart_id, variant_id)
-);
 
 create table categories(
 	category_id int primary key auto_increment,
@@ -168,6 +149,27 @@ CREATE TABLE product_variants (
     CHECK (price >= 0),
     CHECK (stock >= 0),
     CHECK (status IN ('ACTIVE', 'INACTIVE', 'DELETED'))
+);
+
+
+create table cart_items (
+	cart_id int not null,
+    variant_id int not null,
+    quantity int not null default 1,
+    price decimal(12,2) not null,
+    added_at timestamp default current_timestamp,
+    
+	CONSTRAINT fk_cart_items_carts
+        FOREIGN KEY (cart_id) REFERENCES carts (cart_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_cart_items_variants
+        FOREIGN KEY (variant_id) REFERENCES product_variants (variant_id),
+
+    CHECK (quantity > 0),
+    CHECK (price >= 0),
+    
+    primary key(cart_id, variant_id)
 );
 
 CREATE TABLE product_categories (
@@ -379,6 +381,8 @@ CREATE TABLE shipments (
         'DELIVERED', 'RETURNED', 'CANCELLED'
     )),
 
+	    CONSTRAINT uq_shipments_seller_order UNIQUE (seller_order_id),
+            INDEX idx_shipments_status (status),
     CHECK (
         shipped_at IS NULL
         OR delivery_at IS NULL
