@@ -157,7 +157,7 @@ create table cart_items (
     variant_id int not null,
     quantity int not null default 1,
     price decimal(12,2) not null,
-    added_at timestamp default current_timestamp,
+    added_at timestamp not null default current_timestamp,
     
 	CONSTRAINT fk_cart_items_carts
         FOREIGN KEY (cart_id) REFERENCES carts (cart_id)
