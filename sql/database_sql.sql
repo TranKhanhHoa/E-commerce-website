@@ -1,5 +1,5 @@
-create database Ecommerce
-use Ecommerce
+create database Ecommerce;
+use Ecommerce;
 
 create table users(
 	user_id int primary key not null auto_increment,
@@ -9,7 +9,7 @@ create table users(
     phone varchar (20) unique,
     status varchar(20) not null default 'ACTIVE',
 	created_at timestamp not null default current_timestamp,
-    
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     check(
 			status in ('ACTIVE','BANNED','INACTIVE')
 	)
@@ -36,7 +36,8 @@ create table customer_addresses(
     is_default boolean not null default false,
     
     constraint fk_customer_addresses_customers
-    foreign key(customer_id) references customers(user_id)
+    foreign key(customer_id) references customers(user_id),
+    UNIQUE INDEX uq_customer_one_default ((CASE WHEN is_default THEN customer_id END))
 );
 
 create table sellers(
@@ -46,7 +47,7 @@ create table sellers(
     shop_address varchar(255) ,
     rating_avg decimal(3,2) not null default 0.00,
     created_at timestamp not null default current_timestamp,
-    
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     constraint fk_sellers_user
     foreign key (user_id) references users(user_id),
     
@@ -90,7 +91,7 @@ create table products(
     created_at timestamp not null default current_timestamp,
     rating_avg   decimal(3,2) not null default 0.00,
 	review_count int      not null  default 0,
-    
+    updated_at TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     check(status in('ACTIVE', 'INACTIVE', 'DELETED')),
     check(rating_avg >= 0 AND rating_avg <= 5),
     check(review_count >= 0),
@@ -139,7 +140,9 @@ CREATE TABLE product_variants (
     price        DECIMAL(12,2) NOT NULL,
     stock        INT           NOT NULL DEFAULT 0,
     status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
-
+    created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
     CONSTRAINT fk_product_variants_products
         FOREIGN KEY (product_id) REFERENCES products (product_id),
 
@@ -204,7 +207,7 @@ CREATE TABLE orders (
     shipping_fee            DECIMAL(12,2) NOT NULL DEFAULT 0,
     discount_total          DECIMAL(12,2) NOT NULL DEFAULT 0,
     grand_total             DECIMAL(12,2) NOT NULL,
-
+    updated_at              TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_orders_customers
         FOREIGN KEY (customer_id) REFERENCES customers (user_id),
 
@@ -232,7 +235,7 @@ CREATE TABLE seller_orders (
     shipping_fee    DECIMAL(12,2) NOT NULL DEFAULT 0,
     discount_total  DECIMAL(12,2) NOT NULL DEFAULT 0,
     grand_total     DECIMAL(12,2) NOT NULL DEFAULT 0,
-
+    updated_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_seller_orders_orders
         FOREIGN KEY (order_id) REFERENCES orders (order_id),
 
@@ -333,7 +336,8 @@ create table payments(
     payment_date timestamp,
     payment_method varchar(50) not null,
     amount decimal(12,2) not null,
-    status varchar(20) not null,
+    status varchar(20) not null default 'PENDING',
+    updated_at timestamp not null default current_timestamp on update current_timestamp,
     
     constraint fk_payments_orders
     foreign key (order_id) references orders(order_id),
