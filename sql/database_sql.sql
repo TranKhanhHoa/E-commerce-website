@@ -96,7 +96,9 @@ create table products(
     check(rating_avg >= 0 AND rating_avg <= 5),
     check(review_count >= 0),
     constraint fk_products_sellers
-    foreign key(seller_id) references sellers(seller_id)
+    foreign key(seller_id) references sellers(seller_id),
+    CONSTRAINT uq_products_product_seller
+    UNIQUE (product_id, seller_id)
 );
 
 
@@ -131,7 +133,7 @@ CREATE TABLE  product_tags (
 CREATE TABLE product_variants (
     variant_id   INT PRIMARY KEY AUTO_INCREMENT,
     product_id   INT           NOT NULL,
-
+    seller_id INT NOT NULL,
     sku          VARCHAR(100)  NOT NULL UNIQUE,
     color        VARCHAR(50)   NOT NULL DEFAULT 'N/A',
     size         VARCHAR(50)   NOT NULL DEFAULT 'N/A',
@@ -143,9 +145,11 @@ CREATE TABLE product_variants (
     created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
-    CONSTRAINT fk_product_variants_products
-        FOREIGN KEY (product_id) REFERENCES products (product_id),
-
+    
+    CONSTRAINT fk_variants_product_seller
+        FOREIGN KEY (product_id, seller_id) REFERENCES products (product_id, seller_id),
+    CONSTRAINT uq_variants_variant_seller
+        UNIQUE (variant_id, seller_id),
     CONSTRAINT uq_variants_product_color_size
         UNIQUE (product_id, color, size),
 
@@ -208,10 +212,11 @@ CREATE TABLE orders (
     discount_total          DECIMAL(12,2) NOT NULL DEFAULT 0,
     grand_total             DECIMAL(12,2) NOT NULL,
     updated_at              TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
     CONSTRAINT fk_orders_customers
         FOREIGN KEY (customer_id) REFERENCES customers (user_id),
 
-    CHECK (status IN ('PENDING', 'PAID', 'PROCESSING', 'PARTIALLY_SHIPPED',
+    CHECK (status IN ('PENDING', 'PAID', 'PROCESSING','PARTIALLY_SHIPPED','SHIPPED',
                       'COMPLETED', 'CANCELLED', 'REFUNDED')),
     CHECK (subtotal >= 0),
     CHECK (shipping_fee >= 0),
@@ -244,6 +249,8 @@ CREATE TABLE seller_orders (
 
     CONSTRAINT uq_seller_orders_order_seller
         UNIQUE (order_id, seller_id),
+    CONSTRAINT uq_seller_orders_id_seller
+        UNIQUE (seller_order_id, seller_id),
 
     CHECK (status IN ('PENDING', 'CONFIRMED', 'PROCESSING',
                       'SHIPPED', 'COMPLETED', 'CANCELLED')),
@@ -260,7 +267,7 @@ CREATE TABLE seller_orders (
 
 CREATE TABLE order_items (
     order_item_id         INT PRIMARY KEY AUTO_INCREMENT,
-
+    seller_id INT NOT NULL,
     seller_order_id       INT           NOT NULL,
     variant_id            INT           NOT NULL,
 
@@ -272,11 +279,11 @@ CREATE TABLE order_items (
     quantity              INT           NOT NULL,
     unit_price            DECIMAL(12,2) NOT NULL,
 
-    CONSTRAINT fk_order_items_seller_orders
-        FOREIGN KEY (seller_order_id) REFERENCES seller_orders (seller_order_id),
+    CONSTRAINT fk_order_items_seller_owner
+        FOREIGN KEY (seller_order_id, seller_id) REFERENCES seller_orders (seller_order_id, seller_id),
 
-    CONSTRAINT fk_order_items_variants
-        FOREIGN KEY (variant_id) REFERENCES product_variants (variant_id),
+    CONSTRAINT fk_order_items_variant_owner
+        FOREIGN KEY (variant_id, seller_id) REFERENCES product_variants (variant_id, seller_id),
 
     CHECK (quantity > 0),
     CHECK (unit_price >= 0)
@@ -342,10 +349,11 @@ create table payments(
     constraint fk_payments_orders
     foreign key (order_id) references orders(order_id),
     
-	INDEX idx_payments_payment_status ( status),
+    INDEX idx_payments_status_date (status, payment_date),
+    INDEX idx_payments_order_status (order_id, status),
     
     check(payment_method IN ('COD','ZALOPAY', 'VNPAY', 'MOMO', 'CREDIT_CARD')),
-    check(status IN ('PENDING', 'SUCCESS', 'FAILED', 'PARTIALLY_REFUNDED', 'REFUNDED')),
+    check(status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED')),
     check(amount >= 0)
 );
 
