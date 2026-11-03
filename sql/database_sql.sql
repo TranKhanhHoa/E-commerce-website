@@ -224,8 +224,8 @@ CREATE TABLE orders (
     CHECK (grand_total >= 0),
     CHECK (grand_total = subtotal + shipping_fee - discount_total),
 
-    INDEX idx_orders_customer_id_order_date (customer_id,order_date),
-    INDEX idx_orders_customer_id_status (customer_id,status)
+    INDEX idx_orders_customer_order_date (customer_id,order_date),
+    INDEX idx_orders_customer_status (customer_id,status)
 );
 
 CREATE TABLE seller_orders (
