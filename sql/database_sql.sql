@@ -89,16 +89,20 @@ create table products(
     description text,
     status varchar(20) not null default 'ACTIVE',
     created_at timestamp not null default current_timestamp,
+
     rating_avg   decimal(3,2) not null default 0.00,
 	review_count int      not null  default 0,
+
     updated_at TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
     check(status in('ACTIVE', 'INACTIVE', 'DELETED')),
     check(rating_avg >= 0 AND rating_avg <= 5),
     check(review_count >= 0),
+
     constraint fk_products_sellers
-    foreign key(seller_id) references sellers(seller_id),
+        foreign key(seller_id) references sellers(seller_id),
     CONSTRAINT uq_products_product_seller
-    UNIQUE (product_id, seller_id)
+        UNIQUE (product_id, seller_id)
 );
 
 
@@ -189,9 +193,8 @@ CREATE TABLE product_categories (
         FOREIGN KEY (product_id) REFERENCES products (product_id),
 
     CONSTRAINT fk_product_categories_categories
-        FOREIGN KEY (category_id) REFERENCES categories (category_id),
+        FOREIGN KEY (category_id) REFERENCES categories (category_id)
 
-    INDEX idx_product_categories_category (category_id)
 );
 
 CREATE TABLE orders (
@@ -416,6 +419,205 @@ CREATE TABLE reviews (
 
     CHECK (rating BETWEEN 1 AND 5)
 );
+
+
+--Triger
+DELIMITER $$
+
+CREATE TRIGGER trg_reviews_after_insert
+AFTER INSERT ON reviews
+FOR EACH ROW
+BEGIN 
+    DECLARE v_product_id INT;
+
+    SELECT pv.product_id
+    INTO v_product_id
+    FROM order_items oi
+    JOIN product_variants pv    
+        ON pv.variant_id = oi.variant_id
+    WHERE oi.order_item_id = NEW.order_item_id;
+
+    UPDATE products
+    SET
+        rating_avg = ROUND(
+            (rating_avg * review_count + new.rating)
+            /(review_count + 1),2
+        ),
+        review_count = review_count + 1
+        --co the sai so tich luy
+    where product_id = v_product_id;
+
+END $$
+
+DELIMITER;
+
+
+DELIMITER $$
+
+CREATE TRIGGER trg_reviews_after_update
+AFTER UPDATE ON reviews
+FOR EACH ROW 
+BEGIN
+    DECLARE v_product_id INT;
+
+    IF OLD.rating <> NEW.rating THEN
+
+        SELECT pv.product_id
+        INTO v_product_id
+        FROM order_items oi
+        JOIN product_variants pv
+            on pv.variant_id = oi.variant_id
+        WHERE oi.order_item_id = NEW.order_item_id;
+
+        update products
+        SET 
+            rating_avg = ROUND(
+                (rating_avg * review_count
+                 + NEW.rating - OLD.rating)
+                / review_count, 2
+            )
+        WHERE product_id = v_product_id
+          AND review_count > 0;
+    
+    END IF;
+END $$ 
+
+DELIMITER ;
+
+
+CREATE TRIGGER trg_reviews_after_delete
+AFTER DELETE ON reviews
+FOR EACH ROW
+BEGIN
+    DECLARE v_product_id INT;
+
+    SELECT pv.product_id
+    INTO v_product_id
+    FROM order_items oi
+    JOIN product_variants pv
+        ON pv.variant_id = oi.variant_id
+    WHERE oi.order_item_id = OLD.order_item_id;
+
+    UPDATE products
+    SET
+        rating_avg = CASE
+            WHEN review_count <= 1 THEN 0
+            ELSE ROUND(
+                (rating_avg * review_count - OLD.rating)
+                / (review_count - 1), 2
+            )
+        END,
+        review_count = review_count - 1
+    WHERE product_id = v_product_id
+      AND review_count > 0;
+
+END$$
+
+DELIMITER ;
+
+
+
+DELIMITER $$
+
+CREATE TRIGGER trg_shipments_after_update
+AFTER UPDATE ON shipments
+FOR EACH ROW
+BEGIN 
+    DECLARE v_new_status varchar(20);
+
+    IF NOT(OLD.status = NEW.status) THEN
+
+        SET v_new_status = CASE NEW.status
+            WHEN 'READY_TO_PICK' THEN 'PROCESSING'
+            WHEN 'PICKED_UP'     THEN 'SHIPPED'
+            WHEN 'IN_TRANSIT'    THEN 'SHIPPED'
+            WHEN 'DELIVERED'     THEN 'COMPLETED'
+            WHEN 'CANCELLED'     THEN 'CANCELLED'
+            ELSE NULL
+        END;
+
+        IF v_new_status IS NOT NULL THEN
+            UPDATE seller_orders
+            SET status = v_new_status
+            where seller_order_id = NEW.seller_order_id
+             and status <> v_new_status;
+        end if;
+    
+    end if;
+end $$
+
+DELIMITER ;
+
+DELIMITER $$
+
+CREATE TRIGGER trg_seller_orders_after_update
+AFTER UPDATE ON seller_orders
+FOR EACH ROW
+BEGIN 
+    DECLARE v_total int default 0;
+    DECLARE v_completed int default 0;
+    DECLARE v_cancelled int default 0;
+    DECLARE v_shipped int default 0;
+    DECLARE v_active int default 0;
+    DECLARE v_processing int default 0;
+
+    DECLARE v_new_status varchar(20) default null;
+
+    if not (old.status = new.status) THEN
+
+        SELECT 
+            COUNT(*),
+            COALESCE(sum(status = 'COMPLETED'),0),
+            COALESCE(sum(status = 'CANCELLED'),0),
+            COALESCE(SUM(status IN ('SHIPPED', 'COMPLETED')), 0),
+            COALESCE(SUM(status IN ('PENDING', 'CONFIRMED', 'PROCESSING')), 0),
+            COALESCE(SUM(status IN ('CONFIRMED', 'PROCESSING')), 0)
+        INTO 
+            v_total,
+            v_completed,
+            v_cancelled,
+            v_shipped,
+            v_active,
+            v_processing
+        FROM seller_orders
+        where order_id = new.order_id;
+
+        IF v_total > 0 then
+
+            IF v_cancelled = v_total then
+                SET v_new_status = 'CANCELLED';
+            
+            ELSEIF v_completed + v_cancelled = v_total 
+                    AND v_completed > 0 then
+                SET v_new_status = 'COMPLETED';
+            ELSEIF v_shipped > 0 AND v_active > 0 THEN
+                SET v_new_status = 'PARTIALLY_SHIPPED';
+
+            ELSEIF v_shipped > 0 THEN
+                SET v_new_status = 'SHIPPED';
+
+            ELSEIF v_processing > 0 THEN
+                SET v_new_status = 'PROCESSING';
+
+            END IF;
+        ENDIF;
+
+        if v_new_status is not null then
+            UPDATE orders 
+            SET status = v_new_status
+            where order_id = new.order_id
+                and status <> v_new_status;
+        end if;
+    end if;
+end $$ 
+
+DELIMITER ;
+
+
+
+
+
+
 
 
 
